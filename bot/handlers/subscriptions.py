@@ -11,9 +11,9 @@ from bot.services.subscription_service import SubscriptionService
 from bot.keyboards.inline import get_main_keyboard
 from bot.utils.logger import logger
 from bot.config import config
+# from bot.main import bot  # ❌ УДАЛЕНО!
 
 class SubscriptionStates(StatesGroup):
-    """Состояния для добавления подписки"""
     waiting_name = State()
     waiting_amount = State()
     waiting_date = State()
@@ -37,7 +37,7 @@ async def cmd_add_subscription(message: types.Message, state: FSMContext):
     await message.answer(
         "📝 <b>Добавление подписки</b>\n\n"
         "Введите название подписки:\n"
-        "<i>Например: Netflix, Spotify, Интернет, Доставка еды</i>"
+        "<i>Например: Netflix, Spotify, Интернет</i>"
     )
 
 async def process_name(message: types.Message, state: FSMContext):
@@ -59,7 +59,7 @@ async def process_amount(message: types.Message, state: FSMContext):
     try:
         amount = float(message.text.replace(',', '.'))
         if amount <= 0 or amount > 10000000:
-            raise ValueError("Некорректная сумма")
+            raise ValueError
         
         await state.update_data(amount=amount)
         await state.set_state(SubscriptionStates.waiting_date)
@@ -69,14 +69,14 @@ async def process_amount(message: types.Message, state: FSMContext):
             "<i>Например: 15 — списание 15 числа каждого месяца</i>"
         )
     except ValueError:
-        await message.answer("❌ Введите корректную сумму (положительное число)")
+        await message.answer("❌ Введите корректную сумму")
 
 async def process_date(message: types.Message, state: FSMContext):
     """Обрабатывает дату списания"""
     try:
         billing_day = int(message.text)
         if billing_day < 1 or billing_day > 31:
-            raise ValueError("Некорректная дата")
+            raise ValueError
         
         data = await state.get_data()
         await state.update_data(billing_day=billing_day)
@@ -157,13 +157,9 @@ async def cancel_subscription(callback: CallbackQuery, state: FSMContext):
 def register_subscriptions(dp: Dispatcher):
     """Регистрирует обработчики подписок"""
     dp.message.register(cmd_add_subscription, Command("add"))
-    
-    # FSM обработчики
     dp.message.register(process_name, SubscriptionStates.waiting_name)
     dp.message.register(process_amount, SubscriptionStates.waiting_amount)
     dp.message.register(process_date, SubscriptionStates.waiting_date)
-    
-    # Callback обработчики
     dp.callback_query.register(confirm_subscription, F.data == "confirm_subscription")
     dp.callback_query.register(cancel_subscription, F.data == "cancel_subscription")
     
