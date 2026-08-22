@@ -5,21 +5,28 @@
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
 venv/
 env/
+ENV/
 
 # Database
 *.db
 *.sqlite
-data/
+*.sqlite3
+data/*.db
+data/*.sqlite
 
 # Logs
 *.log
-logs/
+data/logs/*
+!data/logs/.gitkeep
 
 # IDE
 .vscode/
 .idea/
+*.swp
 
 # OS
 .DS_Store
+Thumbs.db
