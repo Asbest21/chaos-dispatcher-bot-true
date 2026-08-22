@@ -12,28 +12,25 @@ from bot.services.subscription_service import SubscriptionService
 from bot.services.referral_service import ReferralService
 from bot.utils.logger import logger
 from bot.config import config
-from bot.main import bot
+# ❌ НЕ ИМПОРТИРУЙТЕ bot из main!
+# from bot.main import bot  ← УБЕРИТЕ ЭТУ СТРОКУ
 
 async def cmd_start(message: types.Message, state: FSMContext, command: CommandObject = None):
     """Обработчик команды /start"""
     user_id = message.from_user.id
     
-    # Очищаем состояние
     await state.clear()
     
-    # Проверяем реферальный код
     referral_code = None
     if command and command.args:
         referral_code = command.args.strip()
     
-    # Создаем или получаем пользователя
     user = await SubscriptionService.get_or_create_user(
         user_id=user_id,
         username=message.from_user.username,
         full_name=message.from_user.full_name
     )
     
-    # Обрабатываем реферальный код
     if referral_code and user:
         success = await ReferralService.process_referral(referral_code, user_id)
         if success:
@@ -42,7 +39,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
                 f"Вам начислено: <b>{config.REFERRAL_BONUS_STARS} Stars</b>"
             )
     
-    # Приветственное сообщение
     welcome_text = (
         f"👋 <b>Добро пожаловать, {message.from_user.full_name}!</b>\n\n"
         f"Я — <b>Диспетчер Хаоса</b>, ваш помощник в управлении подписками.\n\n"
@@ -58,7 +54,6 @@ async def cmd_start(message: types.Message, state: FSMContext, command: CommandO
     )
     
     keyboard = await get_main_keyboard(user_id)
-    
     await message.answer(welcome_text, reply_markup=keyboard)
 
 async def cmd_help(message: types.Message):
