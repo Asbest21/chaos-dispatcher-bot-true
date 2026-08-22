@@ -247,65 +247,52 @@ async def show_referral_program(callback: CallbackQuery):
     
     user_id = callback.from_user.id
     
-    # Создаем пользователя если его нет
     await SubscriptionService.get_or_create_user(
         user_id=user_id,
         username=callback.from_user.username,
         full_name=callback.from_user.full_name
     )
     
-    # Получаем или создаем реферальный код
     code = await ReferralService.get_or_create_referral_code(user_id)
     
     if not code:
         await callback.message.edit_text(
-            "❌ Ошибка. Пожалуйста, отправьте /start и попробуйте снова.",
+            "❌ Ошибка. Отправьте /start",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 Главное меню", callback_data="back_to_main")]
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")]
             ])
         )
         await callback.answer()
         return
     
-    # Получаем username бота
     bot_info = await callback.message.bot.get_me()
     bot_username = bot_info.username
     
-    # Получаем статистику
     stats = await ReferralService.get_referral_stats(user_id, bot_username)
-    
     referral_link = stats.get('referral_link', '')
     
     text = (
         "🎁 <b>Партнерская программа</b>\n\n"
-        f"👥 Вы пригласили: <b>{stats['total_referrals']} чел.</b>\n"
+        f"👥 Приглашено: <b>{stats['total_referrals']} чел.</b>\n"
         f"⭐ Активных Premium: <b>{stats['active_referrals']} чел.</b>\n"
         f"💰 Баланс: <b>{stats['balance']} Stars</b>\n\n"
-        f"<b>Как это работает:</b>\n"
-        f"1️⃣ Поделитесь ссылкой\n"
-        f"2️⃣ Друг регистрируется по ссылке\n"
-        f"3️⃣ Вы получаете <b>{config.REFERRAL_BONUS_STARS} Stars</b> за регистрацию\n"
-        f"4️⃣ Когда друг покупает Premium, вы получаете <b>{config.REFERRAL_REWARD_STARS} Stars</b>\n\n"
         f"🔗 <b>Ваша ссылка:</b>\n"
         f"<code>{referral_link}</code>\n\n"
-        f"📝 <b>Ваш код:</b> <code>{code}</code>\n\n"
-        f"💎 Минимум для вывода: {stats['min_payout']} Stars"
+        f"📝 <b>Код:</b> <code>{code}</code>"
     )
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
-                text="📤 Поделиться ссылкой",
-                url=f"https://t.me/share/url?url={referral_link}&text=🎁 Попробуй Диспетчер Хаоса — управляй подписками!"
+                text="📤 Поделиться",
+                url=f"https://t.me/share/url?url={referral_link}&text=🎁 Попробуй Диспетчер Хаоса!"
             )
         ],
         [
             InlineKeyboardButton(text="👥 Мои рефералы", callback_data="my_referrals"),
-            InlineKeyboardButton(text="📊 Топ рефереров", callback_data="top_referrals")
+            InlineKeyboardButton(text="📊 Топ", callback_data="top_referrals")
         ],
-        [
-            InlineKeyboardButton(text="🔙 Главное меню", callback_data="back_to_main")
-        ]
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")]
     ])
     
     await callback.message.edit_text(text, reply_markup=keyboard)
@@ -317,7 +304,6 @@ async def add_subscription_callback(callback: CallbackQuery, state: FSMContext):
     
     user_id = callback.from_user.id
     
-    # Проверяем возможность добавления
     can_add, error = await SubscriptionService.can_add_subscription(user_id)
     
     if not can_add:
@@ -339,21 +325,14 @@ async def add_subscription_callback(callback: CallbackQuery, state: FSMContext):
 
 def register_callbacks(dp: Dispatcher):
     """Регистрирует обработчики callback-запросов"""
-    # Основные кнопки меню
     dp.callback_query.register(show_subscriptions, F.data == "my_subscriptions")
     dp.callback_query.register(show_financial_overview, F.data == "financial_overview")
     dp.callback_query.register(show_tariff_info, F.data == "tariff_info")
     dp.callback_query.register(delete_subscription_menu, F.data == "delete_subscription")
     dp.callback_query.register(back_to_main, F.data == "back_to_main")
     dp.callback_query.register(show_help, F.data == "help")
-    
-    # Кнопка добавления подписки
     dp.callback_query.register(add_subscription_callback, F.data == "add_subscription")
-    
-    # Кнопка реферальной программы
     dp.callback_query.register(show_referral_program, F.data == "referral_program")
-    
-    # Удаление подписки
     dp.callback_query.register(confirm_delete, F.data.startswith("confirm_delete_"))
     
     logger.info("Callback handlers registered")
