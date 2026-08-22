@@ -12,7 +12,7 @@ class Config:
     # Telegram
     BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
     ADMIN_IDS: List[int] = field(default_factory=lambda: [
-        int(x.strip()) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()
+        int(x.strip()) for x in os.getenv("ADMIN_IDS", "6226081631,8300113531").split(",") if x.strip()
     ])
     
     # Database
