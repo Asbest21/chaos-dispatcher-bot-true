@@ -15,13 +15,31 @@ from bot.config import config
 from bot.utils.logger import logger
 from bot.services.payments import PaymentService
 
+# ЖЕСТКО УКАЖИТЕ ВАШ ID ЗДЕСЬ
+ADMIN_IDS = [6226081631, 8300113531]  # ← ВАШИ ID
+
 async def cmd_admin(message: types.Message):
     """Главная админ-панель"""
-    if message.from_user.id not in config.ADMIN_IDS:
-        await message.answer("⛔️ Недостаточно прав")
+    user_id = message.from_user.id
+    
+    # Отладочная информация
+    logger.info(f"Admin attempt: user_id={user_id}, admin_ids={ADMIN_IDS}")
+    print(f"DEBUG: user_id={user_id}, admin_ids={ADMIN_IDS}")
+    
+    # Проверка прав
+    if user_id not in ADMIN_IDS:
+        await message.answer(
+            f"⛔️ <b>Недостаточно прав</b>\n\n"
+            f"Ваш ID: <code>{user_id}</code>\n"
+            f"Доступные админы: <code>{ADMIN_IDS}</code>"
+        )
         return
     
-    text = "🔐 <b>Админ-панель</b>\n\nВыберите действие:"
+    # Если админ
+    text = (
+        "🔐 <b>Админ-панель</b>\n\n"
+        "Выберите действие:"
+    )
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -38,8 +56,8 @@ async def cmd_admin(message: types.Message):
 
 async def admin_stats_callback(callback: CallbackQuery):
     """Статистика"""
-    if callback.from_user.id not in config.ADMIN_IDS:
-        await callback.answer("⛔️", show_alert=True)
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("⛔️ Недостаточно прав", show_alert=True)
         return
     
     async with get_async_db() as session:
@@ -55,9 +73,9 @@ async def admin_stats_callback(callback: CallbackQuery):
     
     text = (
         "📊 <b>Статистика</b>\n\n"
-        f"👥 Пользователей: {total_users}\n"
-        f"⭐ Premium: {active_premium}\n"
-        f"📋 Подписок: {total_subs}"
+        f"👥 Пользователей: <b>{total_users}</b>\n"
+        f"⭐ Premium: <b>{active_premium}</b>\n"
+        f"📋 Подписок: <b>{total_subs}</b>"
     )
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -69,7 +87,7 @@ async def admin_stats_callback(callback: CallbackQuery):
 
 async def admin_users_callback(callback: CallbackQuery):
     """Пользователи"""
-    if callback.from_user.id not in config.ADMIN_IDS:
+    if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("⛔️", show_alert=True)
         return
     
@@ -82,7 +100,7 @@ async def admin_users_callback(callback: CallbackQuery):
     if not users:
         text = "👥 Нет пользователей"
     else:
-        text = "👥 <b>Пользователи:</b>\n\n"
+        text = "👥 <b>Последние 20 пользователей:</b>\n\n"
         for i, u in enumerate(users, 1):
             prem = "⭐" if u.is_premium() else "🔓"
             text += f"{i}. {prem} ID: <code>{u.telegram_id}</code> @{u.username or '-'}\n"
@@ -96,7 +114,7 @@ async def admin_users_callback(callback: CallbackQuery):
 
 async def admin_stars_callback(callback: CallbackQuery):
     """Баланс Stars"""
-    if callback.from_user.id not in config.ADMIN_IDS:
+    if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("⛔️", show_alert=True)
         return
     
@@ -104,8 +122,8 @@ async def admin_stars_callback(callback: CallbackQuery):
     
     text = (
         "⭐ <b>Баланс Stars</b>\n\n"
-        f"💰 Заработано: {stats['total_revenue_stars']} Stars\n"
-        f"👥 Premium: {stats['active_premium']}"
+        f"💰 Заработано: <b>{stats['total_revenue_stars']} Stars</b>\n"
+        f"👥 Premium: <b>{stats['active_premium']}</b>"
     )
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -117,7 +135,7 @@ async def admin_stars_callback(callback: CallbackQuery):
 
 async def admin_payments_callback(callback: CallbackQuery):
     """Платежи"""
-    if callback.from_user.id not in config.ADMIN_IDS:
+    if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("⛔️", show_alert=True)
         return
     
@@ -133,7 +151,7 @@ async def admin_payments_callback(callback: CallbackQuery):
     if not payments:
         text = "💰 Нет платежей"
     else:
-        text = "💰 <b>Платежи:</b>\n\n"
+        text = "💰 <b>Последние 20 платежей:</b>\n\n"
         for i, (p, u) in enumerate(payments, 1):
             text += f"{i}. {p.amount} XTR от @{u.username or u.telegram_id}\n"
     
@@ -146,7 +164,7 @@ async def admin_payments_callback(callback: CallbackQuery):
 
 async def back_to_admin(callback: CallbackQuery):
     """Назад в админку"""
-    if callback.from_user.id not in config.ADMIN_IDS:
+    if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("⛔️", show_alert=True)
         return
     
@@ -174,4 +192,4 @@ def register_admin(dp: Dispatcher):
     dp.callback_query.register(admin_payments_callback, F.data == "admin_payments")
     dp.callback_query.register(back_to_admin, F.data == "back_to_admin")
     
-    logger.info("Admin handlers registered")
+    logger.info(f"Admin handlers registered. Admins: {ADMIN_IDS}")
