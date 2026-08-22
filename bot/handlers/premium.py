@@ -84,17 +84,15 @@ async def process_stars_payment(callback: CallbackQuery):
     """Создает счет на оплату Stars"""
     user_id = callback.from_user.id
     
-    # Создаем инвойс
     invoice_data = await PaymentService.create_stars_invoice(user_id)
     
-    # Отправляем счет
     await callback.message.answer_invoice(
         title=invoice_data['title'],
         description=invoice_data['description'],
         payload=invoice_data['payload'],
         currency=invoice_data['currency'],
         prices=invoice_data['prices'],
-        provider_token="",  # Для Stars не нужен
+        provider_token="",
         need_email=False,
         need_phone_number=False,
         is_flexible=False
@@ -104,9 +102,8 @@ async def process_stars_payment(callback: CallbackQuery):
 
 async def process_pre_checkout(pre_checkout_query: PreCheckoutQuery):
     """Обрабатывает предварительную проверку платежа"""
-    logger.info(f"Pre-checkout query: {pre_checkout_query.currency}, amount: {pre_checkout_query.total_amount}")
+    logger.info(f"Pre-checkout: {pre_checkout_query.currency}, amount: {pre_checkout_query.total_amount}")
     
-    # Проверяем, что это Stars
     if pre_checkout_query.currency != "XTR":
         await pre_checkout_query.answer(
             ok=False,
@@ -114,7 +111,6 @@ async def process_pre_checkout(pre_checkout_query: PreCheckoutQuery):
         )
         return
     
-    # Подтверждаем платеж
     await pre_checkout_query.answer(ok=True)
 
 async def process_successful_payment(message: types.Message):
@@ -123,7 +119,6 @@ async def process_successful_payment(message: types.Message):
     
     logger.info(f"Successful payment: {payment_info.currency}, amount: {payment_info.total_amount}")
     
-    # Обрабатываем платеж
     success = await PaymentService.process_stars_payment(
         user_id=message.from_user.id,
         telegram_payment_charge_id=payment_info.telegram_payment_charge_id,
@@ -134,19 +129,16 @@ async def process_successful_payment(message: types.Message):
     )
     
     if success:
-        # Начисляем награду рефереру
         try:
             await ReferralService.reward_referrer(message.from_user.id)
         except Exception as e:
-            logger.error(f"Error rewarding referrer: {e}", exc_info=True)
+            logger.error(f"Error rewarding referrer: {e}")
         
-        # Получаем обновленную информацию
         async with get_async_db() as session:
             result = await session.execute(
                 select(User).where(User.telegram_id == message.from_user.id)
             )
             user = result.scalar_one_or_none()
-            
             premium_until = user.premium_until if user else None
         
         if premium_until:
@@ -161,8 +153,7 @@ async def process_successful_payment(message: types.Message):
         else:
             await message.answer(
                 "✅ <b>Оплата получена!</b>\n\n"
-                "Premium будет активирован в ближайшее время.\n"
-                "Если проблема сохраняется, обратитесь в поддержку."
+                "Premium будет активирован в ближайшее время."
             )
     else:
         await message.answer(
@@ -174,12 +165,10 @@ def register_premium(dp: Dispatcher):
     """Регистрирует обработчики Premium"""
     dp.message.register(cmd_premium, Command("premium"))
     dp.callback_query.register(process_stars_payment, F.data == "pay_stars")
-    
-    # Обработчики платежей
     dp.pre_checkout_query.register(process_pre_checkout)
     dp.message.register(
         process_successful_payment,
         F.content_type == types.ContentType.SUCCESSFUL_PAYMENT
     )
     
-    logger.info("Premium handlers registered (Stars only)")
+    logger.info("Premium handlers registered")
