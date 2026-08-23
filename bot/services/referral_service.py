@@ -33,10 +33,8 @@ class ReferralService:
                 return ""
             
             if not user.referral_code:
-                # Генерируем уникальный код
                 while True:
                     code = ReferralService.generate_referral_code()
-                    # Проверяем уникальность
                     existing = await session.scalar(
                         select(User).where(User.referral_code == code)
                     )
@@ -49,10 +47,13 @@ class ReferralService:
             return user.referral_code
     
     @staticmethod
-    async def process_referral(referral_code: str, new_user_id: int) -> bool:
-        """Обрабатывает переход по реферальной ссылке"""
+    async def process_referral(referral_code: str, new_user_id: int) -> Tuple[bool, str]:
+        """
+        Обрабатывает переход по реферальной ссылке
+        Возвращает: (успех, сообщение)
+        """
         if not referral_code:
-            return False
+            return False, "Код не указан"
         
         try:
             async with get_async_db() as session:
@@ -64,7 +65,7 @@ class ReferralService:
                 
                 if not referrer:
                     logger.warning(f"Referral code not found: {referral_code}")
-                    return False
+                    return False, "Код не найден"
                 
                 # Находим нового пользователя
                 result = await session.execute(
@@ -73,60 +74,81 @@ class ReferralService:
                 new_user = result.scalar_one_or_none()
                 
                 if not new_user:
-                    logger.warning(f"New user not found: {new_user_id}")
-                    return False
+                    return False, "Пользователь не найден"
                 
-                # Проверяем, что пользователь не пригласил сам себя
+                # Проверка: не приглашает ли сам себя
                 if referrer.telegram_id == new_user_id:
-                    logger.warning(f"Self-referral attempt: {new_user_id}")
-                    return False
+                    return False, "Нельзя приглашать самого себя"
                 
-                # Проверяем, что пользователь еще не имеет реферера
+                # Проверка: уже есть реферер
                 if new_user.referrer_id:
-                    logger.info(f"User {new_user_id} already has referrer")
-                    return False
+                    return False, "Вы уже зарегистрированы по реферальной ссылке"
+                
+                # Проверка: пользователь недавно зарегистрирован
+                # Если created_at старше 5 минут - значит уже был зарегистрирован
+                if new_user.created_at:
+                    created_time = new_user.created_at
+                    if isinstance(created_time, str):
+                        created_time = datetime.fromisoformat(created_time)
+                    
+                    time_since_creation = datetime.now() - created_time
+                    if time_since_creation > timedelta(minutes=5):
+                        return False, "Пользователь уже был зарегистрирован ранее"
                 
                 # Устанавливаем реферера
                 new_user.referrer_id = referrer.id
                 referrer.total_referrals = (referrer.total_referrals or 0) + 1
                 
-                # Начисляем бонус новому пользователю
+                # Начисляем бонусы
                 new_user.referral_balance = (new_user.referral_balance or 0) + config.REFERRAL_BONUS_STARS
+                referrer.referral_balance = (referrer.referral_balance or 0) + config.REFERRAL_REWARD_STARS
+                
+                # Создаем запись о награде
+                reward = ReferralReward(
+                    user_id=referrer.id,
+                    referred_user_id=new_user.id,
+                    amount=config.REFERRAL_REWARD_STARS,
+                    status="paid",
+                    paid_at=datetime.now()
+                )
+                session.add(reward)
                 
                 await session.commit()
                 
-                logger.info(f"Referral processed: {referrer.telegram_id} -> {new_user_id}")
-                return True
+                logger.info(
+                    f"Referral processed: {referrer.telegram_id} -> {new_user_id}. "
+                    f"Referrer +{config.REFERRAL_REWARD_STARS}, New user +{config.REFERRAL_BONUS_STARS}"
+                )
+                
+                return True, f"Начислено {config.REFERRAL_REWARD_STARS} Stars рефереру и {config.REFERRAL_BONUS_STARS} Stars новому пользователю"
                 
         except Exception as e:
             logger.error(f"Error processing referral: {e}", exc_info=True)
-            return False
+            return False, "Ошибка обработки"
     
     @staticmethod
-    async def reward_referrer(referred_user_id: int):
+    async def reward_referrer_for_premium(referred_user_id: int):
         """Начисляет награду рефереру при покупке Premium"""
         try:
             async with get_async_db() as session:
-                # Находим приглашенного пользователя
                 result = await session.execute(
                     select(User).where(User.telegram_id == referred_user_id)
                 )
                 referred_user = result.scalar_one_or_none()
                 
                 if not referred_user or not referred_user.referrer_id:
-                    return
+                    return False
                 
-                # Находим реферера
                 referrer = await session.get(User, referred_user.referrer_id)
                 
                 if not referrer:
-                    return
+                    return False
                 
                 # Начисляем награду
                 referrer.referral_balance = (referrer.referral_balance or 0) + config.REFERRAL_REWARD_STARS
                 referrer.active_referrals = (referrer.active_referrals or 0) + 1
                 
-                # Создаем запись о награде
+                # Создаем запись
                 reward = ReferralReward(
                     user_id=referrer.id,
                     referred_user_id=referred_user.id,
@@ -138,13 +160,60 @@ class ReferralService:
                 
                 await session.commit()
                 
-                logger.info(
-                    f"Referral reward: {config.REFERRAL_REWARD_STARS} Stars "
-                    f"to {referrer.telegram_id} for {referred_user_id}"
-                )
+                logger.info(f"Premium reward: +{config.REFERRAL_REWARD_STARS} to {referrer.telegram_id}")
+                return True
                 
         except Exception as e:
             logger.error(f"Error rewarding referrer: {e}", exc_info=True)
+            return False
+    
+    @staticmethod
+    async def spend_stars_on_premium(user_id: int) -> Tuple[bool, str]:
+        """
+        Тратит Stars на покупку Premium
+        Stars НЕЛЬЗЯ вывести, только потратить на Premium
+        """
+        async with get_async_db() as session:
+            result = await session.execute(
+                select(User).where(User.telegram_id == user_id)
+            )
+            user = result.scalar_one_or_none()
+            
+            if not user:
+                return False, "Пользователь не найден"
+            
+            balance = user.referral_balance or 0
+            premium_cost = config.PREMIUM_PRICE_STARS
+            
+            if balance < premium_cost:
+                return False, f"Недостаточно Stars. Нужно {premium_cost}, у вас {balance}"
+            
+            # Списываем Stars
+            user.referral_balance = balance - premium_cost
+            
+            # Активируем Premium
+            if user.premium_until and user.premium_until > datetime.now():
+                user.premium_until += timedelta(days=config.PREMIUM_DURATION_DAYS)
+            else:
+                user.premium_until = datetime.now() + timedelta(days=config.PREMIUM_DURATION_DAYS)
+            
+            user.tariff = "premium"
+            
+            # Создаем запись о платеже
+            payment = Payment(
+                user_id=user.id,
+                amount=premium_cost,
+                currency="XTR",
+                payment_type="referral_spend",
+                status="completed",
+                completed_at=datetime.now()
+            )
+            session.add(payment)
+            
+            await session.commit()
+            
+            logger.info(f"User {user_id} spent {premium_cost} Stars on Premium")
+            return True, f"Premium активирован! Потрачено {premium_cost} Stars"
     
     @staticmethod
     async def get_referral_stats(user_id: int, bot_username: str = None) -> Dict:
@@ -158,16 +227,13 @@ class ReferralService:
             if not user:
                 return {}
             
-            # Получаем список рефералов
             result = await session.execute(
                 select(User).where(User.referrer_id == user.id)
             )
             referrals = list(result.scalars().all())
             
-            # Считаем активных (с Premium)
             active_count = sum(1 for r in referrals if r.is_premium())
             
-            # Формируем реферальную ссылку
             referral_link = ""
             if user.referral_code and bot_username:
                 referral_link = f"https://t.me/{bot_username}?start={user.referral_code}"
@@ -181,6 +247,7 @@ class ReferralService:
                 "min_payout": config.MIN_REFERRAL_PAYOUT,
                 "reward_per_referral": config.REFERRAL_REWARD_STARS,
                 "bonus_for_new": config.REFERRAL_BONUS_STARS,
+                "premium_cost": config.PREMIUM_PRICE_STARS,
             }
     
     @staticmethod
@@ -208,27 +275,8 @@ class ReferralService:
         async with get_async_db() as session:
             result = await session.execute(
                 select(User)
-                .where(User.active_referrals > 0)
-                .order_by(User.active_referrals.desc())
+                .where(User.total_referrals > 0)
+                .order_by(User.total_referrals.desc())
                 .limit(limit)
-            )
-            return list(result.scalars().all())
-    
-    @staticmethod
-    async def get_referral_rewards(user_id: int) -> List[ReferralReward]:
-        """Получает историю наград пользователя"""
-        async with get_async_db() as session:
-            result = await session.execute(
-                select(User).where(User.telegram_id == user_id)
-            )
-            user = result.scalar_one_or_none()
-            
-            if not user:
-                return []
-            
-            result = await session.execute(
-                select(ReferralReward)
-                .where(ReferralReward.user_id == user.id)
-                .order_by(ReferralReward.created_at.desc())
             )
             return list(result.scalars().all())
