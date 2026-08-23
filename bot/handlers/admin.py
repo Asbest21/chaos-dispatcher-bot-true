@@ -342,7 +342,7 @@ async def admin_actions_callback(callback: CallbackQuery):
         "🔧 <b>Действия</b>\n\n"
         "Выберите действие:\n\n"
         "<b>Команды:</b>\n"
-        "/premium [user_id] [days] — выдать Premium\n"
+        "/prem [user_id] [days] — выдать Premium\n"
         "/block [user_id] — заблокировать\n"
         "/unblock [user_id] — разблокировать\n"
         "/broadcast [текст] — рассылка\n"
@@ -390,9 +390,9 @@ async def cmd_give_premium(message: types.Message, command: CommandObject):
         await message.answer(
             "📝 <b>Выдача Premium</b>\n\n"
             "Использование:\n"
-            "<code>/premium [user_id] [days]</code>\n\n"
+            "<code>/prem [user_id] [days]</code>\n\n"
             "Пример:\n"
-            "<code>/premium 123456789 30</code>"
+            "<code>/prem 123456789 30</code>"
         )
         return
     
@@ -713,7 +713,7 @@ def register_admin(dp: Dispatcher):
     """Регистрирует админ-обработчики"""
     # Команды
     dp.message.register(cmd_admin, Command("admin"))
-    dp.message.register(cmd_give_premium, Command("premium"))
+    dp.message.register(cmd_give_premium, Command("prem"))
     dp.message.register(cmd_block_user, Command("block"))
     dp.message.register(cmd_unblock_user, Command("unblock"))
     dp.message.register(cmd_broadcast, Command("broadcast"))
