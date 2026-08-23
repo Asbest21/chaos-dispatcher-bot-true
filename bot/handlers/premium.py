@@ -119,6 +119,7 @@ async def process_successful_payment(message: types.Message):
     
     logger.info(f"Successful payment: {payment_info.currency}, amount: {payment_info.total_amount}")
     
+    # Обрабатываем платеж
     success = await PaymentService.process_stars_payment(
         user_id=message.from_user.id,
         telegram_payment_charge_id=payment_info.telegram_payment_charge_id,
@@ -129,11 +130,15 @@ async def process_successful_payment(message: types.Message):
     )
     
     if success:
+        # Начисляем награду рефереру за покупку Premium
         try:
-            await ReferralService.reward_referrer(message.from_user.id)
+            reward_success = await ReferralService.reward_referrer_for_premium(message.from_user.id)
+            if reward_success:
+                logger.info(f"Referrer rewarded for user {message.from_user.id}")
         except Exception as e:
-            logger.error(f"Error rewarding referrer: {e}")
+            logger.error(f"Error rewarding referrer: {e}", exc_info=True)
         
+        # Получаем обновленную информацию о пользователе
         async with get_async_db() as session:
             result = await session.execute(
                 select(User).where(User.telegram_id == message.from_user.id)
@@ -142,10 +147,12 @@ async def process_successful_payment(message: types.Message):
             premium_until = user.premium_until if user else None
         
         if premium_until:
+            days_left = (premium_until - datetime.now()).days
+            
             await message.answer(
                 "🎉 <b>Premium успешно активирован!</b>\n\n"
                 f"⏰ Действует до: <b>{premium_until.strftime('%d.%m.%Y')}</b>\n"
-                f"📅 Осталось: <b>{(premium_until - datetime.now()).days} дней</b>\n"
+                f"📅 Осталось: <b>{days_left} дней</b>\n"
                 f"📋 Доступно подписок: <b>{config.PREMIUM_SUBSCRIPTIONS_LIMIT}</b>\n"
                 f"⭐ Оплачено: <b>{config.PREMIUM_PRICE_STARS} Stars</b>\n\n"
                 "Спасибо за поддержку! 💎"
@@ -153,7 +160,8 @@ async def process_successful_payment(message: types.Message):
         else:
             await message.answer(
                 "✅ <b>Оплата получена!</b>\n\n"
-                "Premium будет активирован в ближайшее время."
+                "Premium будет активирован в ближайшее время.\n"
+                "Если проблема сохраняется, обратитесь в поддержку."
             )
     else:
         await message.answer(
@@ -171,4 +179,4 @@ def register_premium(dp: Dispatcher):
         F.content_type == types.ContentType.SUCCESSFUL_PAYMENT
     )
     
-    logger.info("Premium handlers registered")
+    logger.info("Premium handlers registered (Stars only)")
