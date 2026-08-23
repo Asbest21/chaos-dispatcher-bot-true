@@ -12,48 +12,60 @@ from bot.services.subscription_service import SubscriptionService
 from bot.services.referral_service import ReferralService
 from bot.utils.logger import logger
 from bot.config import config
-# ❌ НЕ ИМПОРТИРУЙТЕ bot из main!
-# from bot.main import bot  ← УБЕРИТЕ ЭТУ СТРОКУ
 
 async def cmd_start(message: types.Message, state: FSMContext, command: CommandObject = None):
     """Обработчик команды /start"""
     user_id = message.from_user.id
     
+    # Очищаем состояние
     await state.clear()
     
+    # Проверяем реферальный код
     referral_code = None
     if command and command.args:
         referral_code = command.args.strip()
     
+    # Создаем или получаем пользователя
     user = await SubscriptionService.get_or_create_user(
         user_id=user_id,
         username=message.from_user.username,
         full_name=message.from_user.full_name
     )
     
+    # Обрабатываем реферальный код
     if referral_code and user:
-        success = await ReferralService.process_referral(referral_code, user_id)
+        success, msg = await ReferralService.process_referral(referral_code, user_id)
+        
         if success:
             await message.answer(
                 f"🎁 <b>Вы присоединились по реферальной ссылке!</b>\n\n"
-                f"Вам начислено: <b>{config.REFERRAL_BONUS_STARS} Stars</b>"
+                f"✅ Вам начислено: <b>{config.REFERRAL_BONUS_STARS} Stars</b>\n"
+                f"✅ Пригласившему: <b>+{config.REFERRAL_REWARD_STARS} Stars</b>"
             )
+        else:
+            # Если ошибка не связана с "уже зарегистрирован" - показываем
+            if "уже" not in msg.lower() and "самого себя" not in msg.lower():
+                await message.answer(f"ℹ️ {msg}")
     
+    # Приветственное сообщение (изначальное)
     welcome_text = (
         f"👋 <b>Добро пожаловать, {message.from_user.full_name}!</b>\n\n"
         f"Я — <b>Диспетчер Хаоса</b>, ваш помощник в управлении подписками.\n\n"
         f"🔹 <b>Что я умею:</b>\n"
         f"• Отслеживать подписки и регулярные платежи\n"
         f"• Напоминать за 7 дней, 3 дня и 1 час до списания\n"
-        f"• Рассчитывать «Силу удара по бюджету»\n\n"
-        f"🎁 <b>Партнерская программа:</b>\n"
-        f"Приглашайте друзей и получайте Stars!\n"
-        f"Подробнее: /referral\n\n"
-        f"💡 <b>Бесплатно: {config.FREE_SUBSCRIPTIONS_LIMIT} подписки</b>\n"
+        f"• Рассчитывать «Силу удара по бюджету»\n"
+        f"• Управлять несколькими подписками\n\n"
+        f"📋 <b>Как начать:</b>\n"
+        f"1. Добавьте подписку через меню\n"
+        f"2. Укажите название, сумму и дату\n"
+        f"3. Получайте уведомления\n\n"
+        f"💡 <b>Бесплатно доступно {config.FREE_SUBSCRIPTIONS_LIMIT} подписки</b>\n"
         f"⭐ Premium: до {config.PREMIUM_SUBSCRIPTIONS_LIMIT} подписок"
     )
     
     keyboard = await get_main_keyboard(user_id)
+    
     await message.answer(welcome_text, reply_markup=keyboard)
 
 async def cmd_help(message: types.Message):
