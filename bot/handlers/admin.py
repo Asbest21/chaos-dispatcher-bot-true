@@ -33,7 +33,7 @@ async def cmd_admin(message: types.Message):
     
     text = (
         "🔐 <b>Админ-панель «Диспетчер Хаоса»</b>\n\n"
-        "Выберите раздел:"
+        "Выбери раздел:"
     )
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
